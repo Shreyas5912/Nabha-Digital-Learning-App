@@ -1,0 +1,250 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      UserRole @default(STUDENT)
+  schoolId  String?
+  class     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  studentProgress  StudentProgress[]
+  teacherCourses   Course[]       @relation("TeacherCourses")
+  enrollments      Enrollment[]
+  quizAttempts     QuizAttempt[]
+  offlineContent   OfflineContent[]
+
+  @@map("users")
+}
+
+model Course {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  category    CourseCategory
+  language    String      @default("en") // en, pa, hi
+  difficulty  Difficulty  @default(BEGINNER)
+  isPublished Boolean     @default(false)
+  teacherId   String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  teacher     User           @relation("TeacherCourses", fields: [teacherId], references: [id])
+  lessons     Lesson[]
+  enrollments Enrollment[]
+
+  @@map("courses")
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  type        LessonType
+  order       Int
+  duration    Int      // in minutes
+  courseId    String
+  isDownloadable Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  course    Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress  StudentProgress[]
+  quizzes   Quiz[]
+  resources LessonResource[]
+
+  @@map("lessons")
+}
+
+model LessonResource {
+  id        String   @id @default(cuid())
+  title     String
+  type      ResourceType
+  url       String
+  size      Int?     // in bytes
+  lessonId  String
+  createdAt DateTime @default(now())
+
+  // Relations
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@map("lesson_resources")
+}
+
+model Enrollment {
+  id         String   @id @default(cuid())
+  userId     String
+  courseId   String
+  enrolledAt DateTime @default(now())
+  completedAt DateTime?
+  progress   Float    @default(0) // 0 to 100
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+model StudentProgress {
+  id           String   @id @default(cuid())
+  userId       String
+  lessonId     String
+  completed    Boolean  @default(false)
+  progress     Float    @default(0) // 0 to 100
+  timeSpent    Int      @default(0) // in minutes
+  lastAccessed DateTime @default(now())
+  completedAt  DateTime?
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@map("student_progress")
+}
+
+model Quiz {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  lessonId    String
+  timeLimit   Int?        // in minutes
+  difficulty  Difficulty  @default(BEGINNER)
+  createdAt   DateTime    @default(now())
+
+  // Relations
+  lesson  Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions Question[]
+  attempts QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model Question {
+  id           String       @id @default(cuid())
+  question     String
+  type         QuestionType
+  options      String?     // JSON string of options
+  correctAnswer String
+  points       Int          @default(1)
+  quizId       String
+  order        Int
+  createdAt    DateTime     @default(now())
+
+  // Relations
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("questions")
+}
+
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  userId    String
+  quizId    String
+  score     Float
+  maxScore  Float
+  answers   String   // JSON string of answers
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_attempts")
+}
+
+model OfflineContent {
+  id          String   @id @default(cuid())
+  userId      String
+  contentType String   // lesson, quiz, resource
+  contentId   String   // ID of the content
+  downloadedAt DateTime @default(now())
+  expiresAt   DateTime?
+  size        Int?     // in bytes
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentType, contentId])
+  @@map("offline_content")
+}
+
+model School {
+  id          String   @id @default(cuid())
+  name        String
+  address     String?
+  district    String   @default("Nabha")
+  phone       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("schools")
+}
+
+// Enums
+enum UserRole {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum CourseCategory {
+  DIGITAL_LITERACY
+  MATHEMATICS
+  SCIENCE
+  ENGLISH
+  PUNJABI
+  HINDI
+  COMPUTER_SKILLS
+  GENERAL_KNOWLEDGE
+}
+
+enum LessonType {
+  VIDEO
+  TEXT
+  INTERACTIVE
+  QUIZ
+  ASSIGNMENT
+}
+
+enum ResourceType {
+  VIDEO
+  PDF
+  IMAGE
+  AUDIO
+  DOCUMENT
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  FILL_IN_BLANK
+}
